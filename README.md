@@ -23,6 +23,7 @@ Dự án xây dựng hệ thống giám sát và điều khiển cho cá ăn t�
 - Điều khiển từ xa qua Firebase:
   - Cho cá ăn theo lịch
   - Bật/tắt guồng tạo oxy và máy cho ăn
+  - Cho ăn, bật guồng bằng giọng nói
 - Các chức năng:
   - Đăng nhập, đăng ký, lấy lại mật khẩu
   - Biểu đồ chất lượng nước (MPAndroidChart)
