@@ -4,8 +4,8 @@ Dự án xây dựng hệ thống giám sát và điều khiển cho cá ăn t�
 
 ---
 Ảnh minh họa cho app
-![minhhoa](https://github.com/user-attachments/assets/cc553c5b-4e1b-476b-a95c-dd3aa3300868)
 
+![d8](https://github.com/user-attachments/assets/6d0d545b-8301-4bf7-82fc-4414dbc4a95a)
 
 ---
  Ứng dụng Android
