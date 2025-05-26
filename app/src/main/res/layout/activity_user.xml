@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FFFDF5">
+
+    <!-- Nội dung cuộn được -->
+    <ScrollView
+        android:id="@+id/scrollContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_above="@+id/btnHome"
+        android:padding="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal">
+
+            <!-- Ảnh đại diện -->
+            <ImageView
+                android:id="@+id/profileImage"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_gravity="center"
+                android:scaleType="centerCrop"
+                android:background="@drawable/circle_background"
+                android:clipToOutline="true"
+                android:contentDescription="Avatar" />
+
+            <TextView
+                android:id="@+id/emailText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Email: ..."
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#1B4965"
+                android:layout_marginBottom="24dp" />
+
+            <EditText
+                android:id="@+id/inputName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Họ tên"
+                android:inputType="textPersonName"
+                android:layout_marginBottom="12dp"
+                android:padding="12dp"
+                android:backgroundTint="#1B4965"
+                android:textColor="#1B4965" />
+
+            <EditText
+                android:id="@+id/inputPhone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Số điện thoại"
+                android:inputType="phone"
+                android:layout_marginBottom="16dp"
+                android:padding="12dp"
+                android:backgroundTint="#1B4965"
+                android:textColor="#1B4965" />
+
+            <Button
+                android:id="@+id/btnSaveInfo"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Lưu thông tin"
+                android:backgroundTint="#26C6DA"
+                android:textColor="#FFFFFF"
+                android:textAllCaps="false"
+                android:layout_marginBottom="24dp" />
+
+            <Button
+                android:id="@+id/btnHistory"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Lịch sử cho ăn"
+                android:backgroundTint="#26C6DA"
+                android:textColor="#FFFFFF"
+                android:textAllCaps="false"
+                android:layout_marginBottom="16dp" />
+
+            <Button
+                android:id="@+id/btnChart"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Biểu đồ cảm biến"
+                android:backgroundTint="#26C6DA"
+                android:textColor="#FFFFFF"
+                android:textAllCaps="false"
+                android:layout_marginBottom="16dp" />
+
+            <Button
+                android:id="@+id/btnLogout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Đăng xuất"
+                android:backgroundTint="#F67280"
+                android:textColor="#FFFFFF"
+                android:textAllCaps="false"
+                android:layout_marginBottom="32dp" />
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Nút Trang chủ cố định dưới cùng màn hình -->
+    <ImageButton
+        android:id="@+id/btnHome"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_alignParentBottom="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginBottom="12dp"
+        android:background="@drawable/circle_background"
+        android:src="@drawable/ic_home"
+        android:scaleType="centerInside"
+        android:contentDescription="Trang chủ"
+        android:tint="#26C6DA" />
+</RelativeLayout>
