@@ -3,10 +3,13 @@
 Dự án xây dựng hệ thống giám sát và điều khiển cho cá ăn tự động, ứng dụng IoT kết hợp giữa phần cứng ESP32 và phần mềm Android.
 
 ---
-Ảnh minh họa cho app
-![Screenshot 2025-05-24 143247](https://github.com/user-attachments/assets/c05ab22d-224e-4d40-8d5d-332f213d493b)
-![Screenshot 2025-05-24 150412](https://github.com/user-attachments/assets/482c2187-0e1c-41bf-9aba-b97be7c82130)
-![Screenshot 2025-05-24 144044](https://github.com/user-attachments/assets/7a10ea82-c745-4948-aab0-e95470bd9907)
+## Ảnh minh họa cho app
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/c05ab22d-224e-4d40-8d5d-332f213d493b" alt="UI 1" width="30%"/>
+  <img src="https://github.com/user-attachments/assets/482c2187-0e1c-41bf-9aba-b97be7c82130" alt="UI 2" width="30%"/>
+  <img src="https://github.com/user-attachments/assets/7a10ea82-c745-4948-aab0-e95470bd9907" alt="UI 3" width="30%"/>
+</p>
 
 
 ---
