@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <FirebaseESP32.h>
@@ -6,13 +7,14 @@
 #include <DallasTemperature.h>
 #include <time.h>
 
-
+// ================= WIFI / FIREBASE =================
 WiFiMulti wifi;
 
 #define WIFI_SSID_1 "Hằng"
 #define WIFI_PASS_1 "12345678"
 #define WIFI_SSID_2 "Hang"
 #define WIFI_PASS_2 "0971397361"
+
 #define FIREBASE_HOST "https://test-fea1d-default-rtdb.asia-southeast1.firebasedatabase.app"
 #define FIREBASE_API_KEY "AIzaSyCRiWwj3IyWB0GNT7lw-zx2g3U5o5Cw8iY"
 #define USER_EMAIL "vuthithuhang24cv@gmail.com"
@@ -22,288 +24,322 @@ FirebaseData fbData;
 FirebaseConfig fbConfig;
 FirebaseAuth fbAuth;
 
+// ================= LOAD CELL =================
 #define DOUT 21
 #define SCK 22
-HX711 canDienTu;
-float heSoHieuChuan = 505.4633;
-float canNang = 0;
-float canCu = -1;
+HX711 loadCell;
+float scaleFactor   = 505.4633;
+float currentWeight = 0;
+float previousWeight = -1;
 
-#define CHAN_CAM_BIEN_TDS 34
-float chatLuongNuoc = 0;
+// ================= TDS / TURBIDITY =================
+#define TDS_PIN 34
+float waterQuality = 0;
 
+#define TURBIDITY_PIN 32
+int turbidity = 0;
 
-#define CHAN_DO_DUC_TS300B 32
-int doDucTS300B = 0;
-
-int getMedianNum(int duLieu[], int soLuong) {
-  int tam[soLuong];
-  for (byte i = 0; i < soLuong; i++) tam[i] = duLieu[i];
-  for (int j = 0; j < soLuong - 1; j++) {
-    for (int i = 0; i < soLuong - j - 1; i++) {
-      if (tam[i] > tam[i + 1]) {
-        int tmp = tam[i];
-        tam[i] = tam[i + 1];
-        tam[i + 1] = tmp;
-      }
-    }
-  }
-  if (soLuong % 2 == 1)
-    return tam[soLuong / 2];
-  else
-    return (tam[soLuong / 2] + tam[soLuong / 2 - 1]) / 2;
-}
-
+// ================= NHIỆT ĐỘ =================
 #define TEMP_SENSOR_PIN 18
 OneWire oneWire(TEMP_SENSOR_PIN);
 DallasTemperature sensors(&oneWire);
-float nhietDo = 0;
+float temperature = 0;
 
-
+// ================= ĐỘNG CƠ L298N =================
+// Motor A: guồng
 #define ENA 5
 #define IN1 26
 #define IN2 27
+
+// Motor B: thức ăn
 #define ENB 23
 #define IN3 14
 #define IN4 12
 
-void xoayGuong() {
-  digitalWrite(IN1, HIGH);
-  digitalWrite(IN2, LOW);
-  analogWrite(ENA, 255);
-}
+// ================= TRẠNG THÁI FEEDING =================
+bool feedingGram      = false;
+unsigned long gramStartTime = 0;
+float gramTarget      = 0;
+float gramStartWeight = 0;
 
-void dungGuong() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  analogWrite(ENA, 0);
-}
+bool feedingAuto      = false;
+unsigned long autoFeedStart = 0;
 
-void xoayThucAn() {
-  digitalWrite(IN3, HIGH);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENB, 50);
-}
+bool manualRunning    = false;   // motor đang chạy trong mode manual?
 
-void dungThucAn() {
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENB, 0);
-}
-
-bool dangChoAn = false;
-unsigned long batDauChoAn = 0;
-bool dangChoAnTheoGram = false;
-bool daGhiLogThuCong = false;
-String formatThoiGian() {
+// ================= FORMAT THỜI GIAN =================
+String formatTime() {
   time_t now = time(nullptr);
-  struct tm* timeinfo = localtime(&now);
+  struct tm* t = localtime(&now);
   char buf[20];
   sprintf(buf, "%02d:%02d %02d/%02d/%04d",
-          timeinfo->tm_hour,
-          timeinfo->tm_min,
-          timeinfo->tm_mday,
-          timeinfo->tm_mon + 1,
-          timeinfo->tm_year + 1900);
+          t->tm_hour, t->tm_min,
+          t->tm_mday, t->tm_mon + 1,
+          t->tm_year + 1900);
   return String(buf);
 }
 
-void ghiLog(float gram, String mode) {
-  if (Firebase.getInt(fbData, "/logs/counter")) {
-    int counter = fbData.intData();
-    String logPath = "/logs/log" + String(counter + 1);
+void logFeed(float grams, const String& mode) {
+  if (!Firebase.ready()) return;
 
-    Firebase.setFloat(fbData, logPath + "/gram", gram);
-    Firebase.setString(fbData, logPath + "/mode", mode);
-    Firebase.setString(fbData, logPath + "/time", formatThoiGian());
-    Firebase.setInt(fbData, "/logs/counter", counter + 1);
-    Serial.println("Ghi log thành công: " + logPath);
+  if (Firebase.getInt(fbData, "/logs/counter")) {
+    int c = fbData.intData();
+    String path = "/logs/log" + String(c + 1);
+    Firebase.setFloat (fbData, path + "/gram", grams);
+    Firebase.setString(fbData, path + "/mode", mode);
+    Firebase.setString(fbData, path + "/time", formatTime());
+    Firebase.setInt   (fbData, "/logs/counter", c + 1);
   } else {
     Firebase.setInt(fbData, "/logs/counter", 1);
-    Serial.println("Đã tạo log đầu tiên!");
   }
 }
 
+// ================= MOTOR CONTROL (CHẮC CHẮN STOP/START) =================
+void startGuong() {
+  digitalWrite(ENA, HIGH);
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+}
+
+void stopGuong() {
+  digitalWrite(ENA, LOW);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+}
+
+void startFeeder() {
+  digitalWrite(ENB, HIGH);
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+}
+
+void stopFeeder() {
+  digitalWrite(ENB, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+}
+
+// ================= ĐỌC CẢM BIẾN =================
+void readSensors() {
+  // TDS
+  int adc = analogRead(TDS_PIN);
+  if (adc < 10) waterQuality = 0;
+  else {
+    float v = adc * 3.3 / 4096.0;
+    waterQuality = (133.42 * pow(v, 3) - 255.86 * pow(v, 2) + 857.39 * v) * 0.75;
+  }
+  Firebase.setFloat(fbData, "/aquarium/water_quality", waterQuality);
+
+  // Độ đục
+  turbidity = analogRead(TURBIDITY_PIN);
+  Firebase.setInt(fbData, "/aquarium/ts300b", turbidity);
+
+  // Nhiệt độ
+  sensors.requestTemperatures();
+  temperature = sensors.getTempCByIndex(0);
+  Firebase.setFloat(fbData, "/aquarium/temperature", temperature);
+
+  // Cân nặng
+  if (loadCell.is_ready()) {
+    currentWeight = loadCell.get_units(10);
+    if (abs(currentWeight - previousWeight) > 0.5) {
+      previousWeight = currentWeight;
+      Firebase.setFloat(fbData, "/aquarium/weight", currentWeight);
+    }
+  }
+}
+
+// ================= GUỒNG =================
+void updateGuongControl() {
+  bool guong = false;
+
+  if (Firebase.getBool(fbData, "/aquarium/control/guong")
+      && fbData.dataAvailable()) {
+    guong = fbData.boolData();
+  }
+
+  if (guong) startGuong();
+  else stopGuong();
+}
+
+// ================= FEEDING: AUTO + GRAM =================
+void updateFeedingMode() {
+  String mode = "";
+  if (Firebase.getString(fbData, "/aquarium/control/thucan/mode")
+      && fbData.dataAvailable())
+    mode = fbData.stringData();
+
+  bool state = false;
+  if (Firebase.getBool(fbData, "/aquarium/control/thucan/state")
+      && fbData.dataAvailable())
+    state = fbData.boolData();
+
+  float target = 0;
+  if (Firebase.getFloat(fbData, "/aquarium/control/thucan/target_gram")
+      && fbData.dataAvailable())
+    target = fbData.floatData();
+
+  // ========== AUTO ==========
+  if (mode == "auto") {
+    time_t now = time(nullptr);
+    struct tm* t = localtime(&now);
+    int h = t->tm_hour;
+    int m = t->tm_min;
+
+    if (!feedingAuto && state &&
+        ((h == 6 && m == 0) || (h == 17 && m == 0))) {
+
+      Firebase.setFloat(fbData,
+        "/aquarium/_temp_start_weight", currentWeight);
+
+      startFeeder();
+      feedingAuto = true;
+      autoFeedStart = millis();
+    }
+
+    if (feedingAuto &&
+        (!state || millis() - autoFeedStart > 20000)) {
+
+      stopFeeder();
+      feedingAuto = false;
+      Firebase.setBool(fbData,
+        "/aquarium/control/thucan/state", false);
+
+      float before = 0;
+      Firebase.getFloat(fbData,
+        "/aquarium/_temp_start_weight");
+      before = fbData.floatData();
+
+      float delta = currentWeight - before;
+      if (delta < 0) delta = 0;
+
+      logFeed(delta, "auto");
+    }
+  } else {
+    if (feedingAuto) {
+      feedingAuto = false;
+      stopFeeder();
+      Firebase.setBool(fbData,
+        "/aquarium/control/thucan/state", false);
+    }
+  }
+
+  // ========== GRAM ==========
+  if (mode == "gram") {
+    if (!feedingGram && target > 0 && state) {
+      feedingGram = true;
+      gramTarget = target;
+      gramStartWeight = currentWeight;
+      gramStartTime = millis();
+      startFeeder();
+    }
+
+    if (feedingGram) {
+      float diff = currentWeight - gramStartWeight;
+
+      bool cancelByUser =
+        (!state || target <= 0);
+
+      if (diff >= gramTarget ||
+          millis() - gramStartTime > 30000 ||
+          cancelByUser) {
+
+        feedingGram = false;
+        stopFeeder();
+
+        Firebase.setFloat(fbData,
+          "/aquarium/control/thucan/target_gram", 0);
+        Firebase.setBool (fbData,
+          "/aquarium/control/thucan/state", false);
+
+        float delta = currentWeight - gramStartWeight;
+        if (delta < 0) delta = 0;
+
+        logFeed(delta, "gram");
+      }
+    }
+  } else {
+    if (feedingGram) {
+      feedingGram = false;
+      stopFeeder();
+      Firebase.setBool(fbData,
+        "/aquarium/control/thucan/state", false);
+    }
+  }
+}
+
+// ================= MANUAL =================
+void updateManualFeeding() {
+
+  String mode = "";
+  if (Firebase.getString(fbData, "/aquarium/control/thucan/mode")
+      && fbData.dataAvailable())
+    mode = fbData.stringData();
+
+  bool state = false;
+  if (Firebase.getBool(fbData, "/aquarium/control/thucan/state")
+      && fbData.dataAvailable())
+    state = fbData.boolData();
+
+  if (mode != "manual") {
+    if (manualRunning) {
+      stopFeeder();
+      manualRunning = false;
+    }
+    return;
+  }
+
+  if (state && !manualRunning) {
+    startFeeder();
+    manualRunning = true;
+  }
+
+  if (!state && manualRunning) {
+    stopFeeder();
+    manualRunning = false;
+    logFeed(0, "manual");
+  }
+}
+
+// ================= SETUP =================
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
   wifi.addAP(WIFI_SSID_1, WIFI_PASS_1);
   wifi.addAP(WIFI_SSID_2, WIFI_PASS_2);
-  Serial.print("Đang kết nối WiFi");
-  while (wifi.run() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println("\n Đã kết nối WiFi!");
+  while (wifi.run() != WL_CONNECTED) delay(300);
 
   fbConfig.database_url = FIREBASE_HOST;
-  fbConfig.api_key = FIREBASE_API_KEY;
-  fbAuth.user.email = USER_EMAIL;
-  fbAuth.user.password = USER_PASSWORD;
+  fbConfig.api_key      = FIREBASE_API_KEY;
+  fbAuth.user.email     = USER_EMAIL;
+  fbAuth.user.password  = USER_PASSWORD;
   Firebase.begin(&fbConfig, &fbAuth);
-  Firebase.reconnectWiFi(true);
-  Serial.println("Firebase sẵn sàng!");
 
-  canDienTu.begin(DOUT, SCK);
-  canDienTu.set_scale(heSoHieuChuan);
-  delay(2000);
-  canDienTu.tare();
+  loadCell.begin(DOUT, SCK);
+  loadCell.set_scale(scaleFactor);
+  delay(1500);
+  loadCell.tare();
 
   sensors.begin();
-
   configTime(7 * 3600, 0, "pool.ntp.org");
-  while (!time(nullptr)) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nĐồng bộ thời gian thành công");
+  while (!time(nullptr)) delay(500);
 
-  pinMode(ENA, OUTPUT);
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(ENB, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-  dungGuong();
-  dungThucAn();
+  pinMode(ENA, OUTPUT); pinMode(IN1, OUTPUT); pinMode(IN2, OUTPUT);
+  pinMode(ENB, OUTPUT); pinMode(IN3, OUTPUT); pinMode(IN4, OUTPUT);
+
+  stopGuong();
+  stopFeeder();
 }
 
-
+// ================= LOOP =================
 void loop() {
-  const int soMau = 15;
-  int duLieuTDS[soMau];
-  for (int i = 0; i < soMau; i++) {
-    duLieuTDS[i] = analogRead(CHAN_CAM_BIEN_TDS);
-    delay(10);
-  }
-  int adc = getMedianNum(duLieuTDS, soMau);
+  static unsigned long last = 0;
+  if (millis() - last < 500) return;   
+  last = millis();
 
-  if (adc < 10) {
-    chatLuongNuoc = 0;
-  } else {
-    float dienAp = (adc * 3.3) / 4096.0;
-    float heSoTDS = 0.75;
-    chatLuongNuoc = (133.42 * pow(dienAp, 3) - 255.86 * pow(dienAp, 2) + 857.39 * dienAp) * heSoTDS;
-  }
-
-  Firebase.setFloat(fbData, "/aquarium/water_quality", chatLuongNuoc);
-  Serial.printf("Chất lượng nước (TDS): %.0f ppm\n", chatLuongNuoc);
-  time_t now = time(nullptr);
-  String timestamp = String(now);
-  Firebase.setFloat(fbData, "/tds_logs/" + timestamp, chatLuongNuoc);
-
-  doDucTS300B = analogRead(CHAN_DO_DUC_TS300B);
-  Firebase.setInt(fbData, "/aquarium/ts300b", doDucTS300B);
-  Serial.printf("Độ đục TS-300B (raw): %d\n", doDucTS300B);
-
-  sensors.requestTemperatures();
-  nhietDo = sensors.getTempCByIndex(0);
-  Firebase.setFloat(fbData, "/aquarium/temperature", nhietDo);
-  Serial.printf("Nhiệt độ: %.2f °C\n", nhietDo);
-
-  if (canDienTu.is_ready()) {
-    canNang = canDienTu.get_units(20);
-    if (canNang < 2.0) canNang = 0;
-
-    if (abs(canNang - canCu) > 0.5) {
-      canCu = canNang;
-      Firebase.setFloat(fbData, "/aquarium/weight", canNang);
-    }
-    Serial.printf("Cân nặng: %.2f g\n", canNang);
-  }
-
-  if (Firebase.getBool(fbData, "/aquarium/control/guong")) {
-    bool guong = fbData.boolData();
-    guong ? xoayGuong() : dungGuong();
-  }
-
-  String mode = "";
-  if (Firebase.getString(fbData, "/aquarium/control/thucan/mode")) {
-    mode = fbData.stringData();
-  }
-
-
-  if (mode == "auto") {
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
-    int gio = timeinfo->tm_hour;
-    int phut = timeinfo->tm_min;
-
-    if (!dangChoAn && ((gio == 6 && phut == 0) || (gio == 17 && phut == 0))) {
-      float khoiLuongTruoc = canDienTu.get_units(10);
-      Firebase.setFloat(fbData, "/aquarium/_temp_start_weight", khoiLuongTruoc);
-      xoayThucAn();
-      dangChoAn = true;
-      batDauChoAn = millis();
-      Serial.println("Bắt đầu cho ăn tự động");
-    }
-
-    if (dangChoAn && millis() - batDauChoAn >= 20000) {
-      dungThucAn();
-      dangChoAn = false;
-      float khoiLuongTruoc = 0;
-      float khoiLuongSau = canDienTu.get_units(10);
-
-      if (Firebase.getFloat(fbData, "/aquarium/_temp_start_weight")) {
-        khoiLuongTruoc = fbData.floatData();
-      }
-
-      float gram = khoiLuongSau - khoiLuongTruoc;
-      if (gram < 0) gram = 0;
-      Serial.printf("Kết thúc cho ăn tự động: %.2f gram\n", gram);
-      ghiLog(gram, "auto");
-    }
-  }
-
-  float target = 0;
-  if (Firebase.getFloat(fbData, "/aquarium/control/thucan/target_gram")) {
-    target = fbData.floatData();
-  }
-
-  if (target > 0 && !dangChoAnTheoGram) {
-    float batDau = canDienTu.get_units(10);
-    xoayThucAn();
-    dangChoAnTheoGram = true;
-    Serial.printf("Bắt đầu cho ăn %.2f gram\n", target);
-
-    while ((canDienTu.get_units(10) - batDau) < target) {
-      delay(500);
-      if (Firebase.getFloat(fbData, "/aquarium/control/thucan/target_gram") && fbData.floatData() == 0) {
-        Serial.println("Đã hủy giữa chừng");
-        break;
-      }
-    }
-
-    dungThucAn();
-    Firebase.setFloat(fbData, "/aquarium/control/thucan/target_gram", 0);
-    Firebase.setBool(fbData, "/aquarium/control/thucan/state", false);
-    dangChoAnTheoGram = false;
-
-    float khoiLuongSau = canDienTu.get_units(10);
-    float daCho = khoiLuongSau - batDau;
-    if (daCho < 0) daCho = 0;
-
-    Serial.printf("Kết thúc cho ăn theo gram: %.2f g\n", daCho);
-    ghiLog(daCho, "gram");
-  }
-
-  if (mode == "manual" && Firebase.getBool(fbData, "/aquarium/control/thucan/state")) {
-    bool state = fbData.boolData();
-
-    if (state && !daGhiLogThuCong) {
-      xoayThucAn();
-      daGhiLogThuCong = true;
-      Serial.println("Bắt đầu cho ăn thủ công");
-    }
-
-    if (!state && daGhiLogThuCong) {
-      dungThucAn();
-      daGhiLogThuCong = false;
-      Serial.println("Kết thúc cho ăn thủ công");
-      ghiLog(0.0, "manual");
-    }
-  }
-
-  delay(60000);
+  readSensors();
+  updateGuongControl();
+  updateFeedingMode();
+  updateManualFeeding();
 }
